@@ -1,32 +1,234 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Weather App</title>
+    <title>Vibely Weather</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+      #map { height: 300px; width: 100%; margin: 20px 0; }
+    </style>
 </head>
 <body>
-    <h1>Weather App (One Call API)</h1>
-    <form method="post">
-        <label>City name: <input type="text" name="city" required></label>
-        <button type="submit">Get Weather</button>
-    </form>
+    <h1 class="page-title">Vibely Weather</h1>
+    <div class="form-container">
+        <form method="post" id="weather-form">
+            <input 
+            type="text" 
+            name="city" 
+            class="form-input" 
+            placeholder="Enter city"  
+            autocomplete="off"
+            id="city-input"
+            >
+            <input type="hidden" name="lat" id="lat-input">
+            <input type="hidden" name="lon" id="lon-input">
+            <input type="hidden" name="map_layer" id="map_layer_input" value="{{ map_layer if map_layer is defined else 'osm' }}">
+            <button type="submit" class="round-btn">Get Weather</button>
+        </form>
+        </div>
+
     {% if error %}
         <p style="color:red;">{{ error }}</p>
     {% endif %}
-    {% if weather %}
-        <h2>Current Weather in {{ location }}, {{ country }}</h2>
-        <ul>
-            <li>Temperature: {{ weather.temp }} °C</li>
-            <li>Feels Like: {{ weather.feels_like }} °C</li>
-            <li>Pressure: {{ weather.pressure }} hPa</li>
-            <li>Humidity: {{ weather.humidity }}%</li>
-            <li>
-                Wind: {{ weather.wind_speed }} m/s
-                {% if weather.wind_deg %}
-                    ({{ weather.wind_deg }}°
-                    {% if wind_compass %}{{ wind_compass }}{% endif %})
-                {% endif %}
-            </li>
-        </ul>
+    {% if lat and lon %}
+      <div id="map"></div>
+      <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  // Define base layers
+  var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  });
+
+  var esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles © Esri'
+  });
+
+     // Determine initial layer based on backend value
+    var initialLayer = ({{ map_layer|tojson }} === "esriSat") ? esriSat : osm;
+
+    var map = L.map('map', {
+      center: [{{ lat }}, {{ lon }}],
+      zoom: 10,
+      layers: [initialLayer]
+    });
+
+  // Add layer control
+  var baseMaps = {
+    "OpenStreetMap": osm,
+    "Satellite": esriSat
+  };
+  L.control.layers(baseMaps).addTo(map);
+
+  // Set hidden input to current layer on page load
+    var mapLayerInput = document.getElementById('map_layer_input');
+    if (mapLayerInput) {
+      mapLayerInput.value = (initialLayer === esriSat) ? "esriSat" : "osm";
+    }
+
+    // Update hidden input when the user changes the base layer
+    map.on('baselayerchange', function(e) {
+      if (mapLayerInput) {
+        mapLayerInput.value = (e.name === "Satellite") ? "esriSat" : "osm";
+      }
+    });
+
+  // Initial marker and popup
+  var marker = L.marker([{{ lat }}, {{ lon }}]).addTo(map);
+  {% if location %}
+    marker.bindPopup('Forecast location: {{ location }}, {{ country }}').openPopup();
+  {% else %}
+    marker.bindPopup('Coordinates: {{ lat }}, {{ lon }}').openPopup();
+  {% endif %}
+
+  // On map click, update marker and popup with coordinates
+  map.on('click', function(e) {
+    var lat = e.latlng.lat.toFixed(5);
+    var lon = e.latlng.lng.toFixed(5);
+    document.getElementById('lat-input').value = lat;
+    document.getElementById('lon-input').value = lon;
+    document.getElementById('city-input').value = '';
+
+    // Remove existing marker and add new one at clicked location
+    if (marker) {
+      map.removeLayer(marker);
+    }
+    marker = L.marker([lat, lon]).addTo(map);
+    marker.bindPopup('Coordinates: ' + lat + ', ' + lon).openPopup();
+
+    // Submit the form
+    document.getElementById('weather-form').submit();
+  });
+</script>
     {% endif %}
+    {% if weather %}
+        <h2 class="section-title">Current Weather</h2>
+        <div class="current-container">
+            <div class="current-box">
+            <strong>Temperature</strong><br>
+            {{ weather.temp }} °C
+            </div>
+            <div class="current-box">
+            <strong>Feels Like</strong><br>
+            {{ weather.feels_like }} °C
+            </div>
+            <div class="current-box">
+            <strong>Pressure</strong><br>
+            {{ weather.pressure }} hPa
+            </div>
+            <div class="current-box">
+            <strong>Humidity</strong><br>
+            {{ weather.humidity }}%
+            </div>
+            <div class="current-box">
+            <strong>Wind</strong><br>
+            {{ weather.wind_speed_knots }} knots <br>
+            {% if weather.wind_deg %}
+                Direction: {{ weather.wind_deg }}°
+                {% if wind_compass %}{{ wind_compass }}{% endif %}
+            {% endif %}
+            </div>
+            <div class="current-box">
+            <strong>Sunrise</strong><br>
+            {{ sunrise_local }}
+            </div>
+            <div class="current-box">
+            <strong>Sunset</strong><br>
+            {{ sunset_local }}
+            </div>
+            <div class="current-box">
+            <strong>Moon Phase</strong><br>
+            {% if moon_phase_str %}
+                {{ moon_phase_str }}
+            {% else %}
+                N/A
+            {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="collapsible-container">
+  <button class="collapsible-btn" type="button" onclick="toggleHourly()">Show Hourly Forecast</button>
+  <div class="collapsible-content" id="hourly-section" style="display:none;">
+    <table class="hourly-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Temp (°C)</th>
+          <th>Pressure (hPa)</th>
+          <th>Humidity (%)</th>
+          <th>Wind (knots)</th>
+          <th>Direction</th>
+          <th>Gusts (knots)</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for hour in hourly_today %}
+        <tr>
+          <td>{{ hour.time_str }}</td>
+          <td>{{ hour.temp }}</td>
+          <td>{{ hour.pressure }}</td>
+          <td>{{ hour.humidity }}</td>
+          <td>
+            {% if hour.wind_speed %}
+              {{ (hour.wind_speed * 1.94384)|round(1) }}
+            {% else %}N/A{% endif %}
+          </td>
+          <td>
+            {% if hour.wind_deg %}
+              {{ hour.wind_deg }}°
+              {% set compass = wind_compass if wind_compass else '' %}
+              {{ compass }}
+            {% else %}N/A{% endif %}
+          </td>
+          <td>
+            {% if hour.wind_gust %}
+              {{ (hour.wind_gust * 1.94384)|round(1) }}
+            {% else %}N/A{% endif %}
+          </td>
+          <td>{{ hour.weather[0].description }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+function toggleHourly() {
+  var section = document.getElementById('hourly-section');
+  var btn = document.querySelector('.collapsible-btn');
+  if (section.style.display === "none") {
+    section.style.display = "block";
+    btn.textContent = "Hide Hourly Forecast";
+  } else {
+    section.style.display = "none";
+    btn.textContent = "Show Hourly Forecast";
+  }
+}
+</script>
+
+    {% if forecast %}
+        <h3 class="section-title">Forecast</h3>
+        <div class="forecast-container">
+            {% for day in forecast %}
+            <div class="forecast-box">
+                <strong>{{ day.date_str }}</strong><br>
+                <span style="text-transform: capitalize;">{{ day.weather[0].description }}</span><br>
+                <span>🌡️ {{ day.temp.day }} °C (feels like: {{ day.feels_like.day }} °C)</span><br>
+                <span>💧 Humidity: {{ day.humidity }}%</span><br>
+                <span>💨 {{ day.wind_speed_knots }} knots
+                {% if day.wind_deg %}
+                    ({{ day.wind_deg }}°
+                    {% if day.wind_compass %}{{ day.wind_compass }}{% endif %})
+                {% endif %}
+                </span><br>
+                <span>🌙 Moon: {{ day.moon_phase_str }}</span><br>
+            </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
 </body>
 </html>
