@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Weather App</title>
+</head>
+<body>
+    <h1>Weather App (One Call API)</h1>
+    <form method="post">
+        <label>City name: <input type="text" name="city" required></label>
+        <button type="submit">Get Weather</button>
+    </form>
+    {% if error %}
+        <p style="color:red;">{{ error }}</p>
+    {% endif %}
+    {% if weather %}
+        <h2>Current Weather in {{ location }}, {{ country }}</h2>
+        <ul>
+            <li>Temperature: {{ weather.temp }} °C</li>
+            <li>Feels Like: {{ weather.feels_like }} °C</li>
+            <li>Pressure: {{ weather.pressure }} hPa</li>
+            <li>Humidity: {{ weather.humidity }}%</li>
+            <li>
+                Wind: {{ weather.wind_speed }} m/s
+                {% if weather.wind_deg %}
+                    ({{ weather.wind_deg }}°
+                    {% if wind_compass %}{{ wind_compass }}{% endif %})
+                {% endif %}
+            </li>
+        </ul>
+    {% endif %}
+</body>
+</html>
